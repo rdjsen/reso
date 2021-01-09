@@ -7,6 +7,7 @@ Created on Wed Dec 23 15:56:14 2020
 
 #wrapper for resolution tracker
 
+import pandas as pd
 from class_def import resolutions
 from os import path
 from os import getcwd
@@ -15,7 +16,8 @@ from telegram.ext import Updater
 from telegram.ext import CommandHandler
 import sqlite3
 
-FILE_TEMPLATE = 'num,resolution,type,target,current,percent,pace,pace percent'
+FILE_TEMPLATE = ['user_id', 'num', 'resolution', 'type', 'target', 'current', 'percent', 
+                 'pace', 'pace percent']
 
 conn = sqlite3.connect('data.db')
 
@@ -49,21 +51,30 @@ def start_tracking(update, context):
     #TODO code to check if file exists and confirm overrite (probably with args)
     user_id = update.effective_chat.id
     
-    if path.isfile(str(user_id)+'.csv'):
-        #check for an overrite argument?  -r?
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                             text = "It looks like I am already tracking resolutions"
-                             " for you.")
-        return
-    
-    #create blank file
-    blank_file = open(str(user_id)+'.csv', 'w')
-    blank_file.write(FILE_TEMPLATE)
-    blank_file.close()
-    
     #add to user_data db
     conn = sqlite3.connect('data.db')
     c = conn.cursor()
+    
+    
+# # # ~ ~ ~ Deprecated Code ~ ~ ~ # # #    
+#    if path.isfile(str(user_id)+'.csv'):
+#        #check for an overrite argument?  -r?
+#        context.bot.send_message(chat_id=update.effective_chat.id,
+#                             text = "It looks like I am already tracking resolutions"
+#                             " for you.")
+#        return
+#    
+#    #create blank file
+#    blank_file = open(str(user_id)+'.csv', 'w')
+#    blank_file.write(FILE_TEMPLATE)
+#    blank_file.close()
+# # # ~ ~ ~ End Deprecated Code ~ ~ ~ # # #
+    
+    #removing any old resolutions
+    c.execute("""DELETE FROM resolutions
+              WHERE user_id = ?
+              """, (user_id,))
+    conn.commit()
     
     #checking if currently in dB
     c.execute("""SELECT COUNT(*) FROM user_status WHERE chat_id=?""", (user_id,))
@@ -165,12 +176,40 @@ def input_loop(update, context):
             try:
                 type_list = {1:'One-Off', 2:'Yearly Total'}
                 cur_type = int(update.message.text)
-                #TODO FUCK I have to redo the whole db structure don't I
-                #if
+                
+                #calc newnum
+                c.execute('''
+                          SELECT COUNT(*) 
+                          FROM resolutions 
+                          WHERE user_id=?
+                          ''', (user_id,))
+                
+                new_num = c.fetchone()[0] + 1
+                
+                c.execute("""INSERT INTO resolutions
+                          VALUES (?, ?, "", ?, 0,0,0,0,0)
+                          """, (user_id, new_num, type_list[cur_type],))
+                
+                conn.commit()
+                
+                #update status
+                c.execute("""
+                  UPDATE user_status
+                  SET num = 1
+                  WHERE chat_id=?
+                  """, (user_id,))
+                
+                conn.commit()
+                
+                #added, send response method
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                             text = "Great!  What is the resolution?")
                 
             except (ValueError, IndexError):
                 #illegal value entered
-                pass
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                             text = "Uh-Oh!  Illegal value entered! "
+                             "Please try again!")
         
         elif cur_num == 1:
             #prompting description
@@ -192,6 +231,7 @@ def input_loop(update, context):
     elif cur_status == 'deleting':
         pass
     else:
+        pass
         #no command currently running
     
 # # # ~ ~ ~ Other Functions ~ ~ ~ # # #
@@ -205,6 +245,7 @@ def setup_db():
     #if not create it
     c = conn.cursor()
     
+    #checking for user_status table
     c.execute('''SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='user_status' ''')
     
     if c.fetchone()[0] == 0:
@@ -215,6 +256,14 @@ def setup_db():
                   (chat_id, status, num)
                   """)
         conn.commit()
+        
+    #checking for user resos tables
+    c.execute('''SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='resolutions' ''')
+    
+    if c.fetchone()[0] == 0:
+        #table doesn't exist
+        df = pd.DataFrame(columns=FILE_TEMPLATE)
+        df.to_sql('resolutions', conn, index=False)
         
 # # # ~ ~ ~ Main ~ ~ ~ # # #
 def main():
