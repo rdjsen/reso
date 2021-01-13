@@ -178,13 +178,16 @@ def input_loop(update, context):
     
     conn = sqlite3.connect('data.db')
     c = conn.cursor()
-    c.execute("""
-              SELECT status, num
-              FROM user_status
-              WHERE chat_id=?
-              """, (user_id,))
+    # c.execute("""
+    #           SELECT status, num
+    #           FROM user_status
+    #           WHERE chat_id=?
+    #           """, (user_id,))
     
-    dbpull = c.fetchone()
+    # dbpull = c.fetchone()
+    
+    dbpull = get_status(user_id)
+    
     cur_status = dbpull[0]
     cur_num = dbpull[1]
     
@@ -197,13 +200,13 @@ def input_loop(update, context):
                 cur_type = int(update.message.text)
                 
                 #calc newnum
-                c.execute('''
-                          SELECT COUNT(*) 
-                          FROM resolutions 
-                          WHERE user_id=?
-                          ''', (user_id,))
+                # c.execute('''
+                #           SELECT COUNT(*) 
+                #           FROM resolutions 
+                #           WHERE user_id=?
+                #           ''', (user_id,))
                 
-                new_num = c.fetchone()[0] + 1
+                new_num = count_resos(user_id) + 1
                 
                 c.execute("""INSERT INTO resolutions
                           VALUES (?, ?, "", ?, 0,0,0,0,0)
@@ -212,13 +215,15 @@ def input_loop(update, context):
                 conn.commit()
                 
                 #update status
-                c.execute("""
-                          UPDATE user_status
-                          SET num = 1
-                          WHERE chat_id=?
-                          """, (user_id,))
+                # c.execute("""
+                #           UPDATE user_status
+                #           SET num = 1
+                #           WHERE chat_id=?
+                #           """, (user_id,))
                 
-                conn.commit()
+                # conn.commit()
+                
+                update_status(user_id, 'adding', 1)
                 
                 #added, send response method
                 context.bot.send_message(chat_id=update.effective_chat.id,
@@ -238,13 +243,14 @@ def input_loop(update, context):
             description = update.message.text
             
             #calc new_num
-            c.execute('''
-                      SELECT COUNT(*) 
-                      FROM resolutions 
-                      WHERE user_id=?
-                      ''', (user_id,))
+            # c.execute('''
+            #           SELECT COUNT(*) 
+            #           FROM resolutions 
+            #           WHERE user_id=?
+            #           ''', (user_id,))
                 
-            new_num = c.fetchone()[0]
+            # new_num = c.fetchone()[0]
+            new_num = count_resos(user_id)
             
             #add description to db
             c.execute("""
@@ -271,11 +277,13 @@ def input_loop(update, context):
             if cur_type == 'Yearly Total':
             
                 #if yearly total, move on to prompting for goal and current
-                c.execute("""
-                          UPDATE user_status
-                          SET num = 2
-                          WHERE chat_id=?
-                          """, (user_id,))
+                # c.execute("""
+                #           UPDATE user_status
+                #           SET num = 2
+                #           WHERE chat_id=?
+                #           """, (user_id,))
+                
+                update_status(user_id, 'adding', 2)
                 
                 conn.commit()
                 conn.close()
@@ -288,13 +296,15 @@ def input_loop(update, context):
                 #type is one off - end adding
                 
                 #update status
-                c.execute("""
-                          UPDATE user_status
-                          SET num = 0,
-                          status = 'idle'
-                          WHERE chat_id=?
-                          """, (user_id,))
-               
+                # c.execute("""
+                #           UPDATE user_status
+                #           SET num = 0,
+                #           status = 'idle'
+                #           WHERE chat_id=?
+                #           """, (user_id,))
+                
+                update_status(user_id, 'idle', 0)
+                
                 conn.commit()
                 conn.close() 
                 
@@ -314,13 +324,15 @@ def input_loop(update, context):
                     raise ValueError
                     
                 #calc newnum
-                c.execute('''
-                          SELECT COUNT(*) 
-                          FROM resolutions 
-                          WHERE user_id=?
-                          ''', (user_id,))
+                # c.execute('''
+                #           SELECT COUNT(*) 
+                #           FROM resolutions 
+                #           WHERE user_id=?
+                #           ''', (user_id,))
+                #
+                #new_num = c.fetchone()[0]
                 
-                new_num = c.fetchone()[0]
+                new_num = count_resos(user_id)
                 
                 #update db
                 c.execute("""
@@ -333,11 +345,13 @@ def input_loop(update, context):
                 conn.commit()
                 
                 #update status
-                c.execute("""
-                          UPDATE user_status
-                          SET num = 3
-                          WHERE chat_id=?
-                          """, (user_id,))
+                # c.execute("""
+                #           UPDATE user_status
+                #           SET num = 3
+                #           WHERE chat_id=?
+                #           """, (user_id,))
+                
+                update_status(user_id, 'adding', 3)
                 
                 conn.commit()
                 conn.close()
@@ -363,13 +377,15 @@ def input_loop(update, context):
                     raise ValueError
                     
                 #calc newnum
-                c.execute('''
-                          SELECT COUNT(*) 
-                          FROM resolutions 
-                          WHERE user_id=?
-                          ''', (user_id,))
+                # c.execute('''
+                #           SELECT COUNT(*) 
+                #           FROM resolutions 
+                #           WHERE user_id=?
+                #           ''', (user_id,))
                 
-                new_num = c.fetchone()[0]
+                # new_num = c.fetchone()[0]
+                
+                new_num = count_resos(user_id)
                 
                 #update db
                 c.execute("""
@@ -382,12 +398,14 @@ def input_loop(update, context):
                 conn.commit()
                 
                 #update status
-                c.execute("""
-                          UPDATE user_status
-                          SET num = 0,
-                          status = 'idle'
-                          WHERE chat_id=?
-                          """, (user_id,))
+                # c.execute("""
+                #           UPDATE user_status
+                #           SET num = 0,
+                #           status = 'idle'
+                #           WHERE chat_id=?
+                #           """, (user_id,))
+                
+                update_status(user_id, 'idle', 0)
                 
                 conn.commit()
                 conn.close()
@@ -412,7 +430,80 @@ def input_loop(update, context):
     else:
         pass
         #no command currently running
+
     
+# # # ~ ~ ~ SQL Functions ~ ~ ~ # # #
+def get_status(user_id):
+    """Retrieve user status from database"""
+    
+    conn = sqlite3.connect('data.db')
+    c = conn.cursor()
+    c.execute("""
+              SELECT status, num
+              FROM user_status
+              WHERE chat_id=?
+              """, (user_id,))
+    
+    #dbpull = c.fetchone()
+    #cur_status = dbpull[0]
+    #cur_num = dbpull[1]
+    
+    return c.fetchone()
+
+
+def update_status(user_id, status, num):
+    """update SQL db with provided status"""
+
+    conn = sqlite3.connect('data.db')
+    c = conn.cursor()
+
+    c.execute("""
+              UPDATE user_status
+              SET num = ?,
+              status = ?
+              WHERE chat_id=?
+              """, (num, status, user_id))
+              
+    conn.commit()
+
+def count_resos(user_id):
+    """get the current number of resos for a user"""
+    
+    conn = sqlite3.connect('data.db')
+    c = conn.cursor()
+    
+    c.execute('''
+              SELECT COUNT(*) 
+              FROM resolutions 
+              WHERE user_id=?
+              ''', (user_id,))
+                
+    return c.fetchone()[0]
+
+
+def update_percents(user_id):
+    """update the percent and pace for a given user_id"""
+    #TODO update percents
+    conn = sqlite3.connect('data.db')
+    
+    c = conn.cursor()
+    
+    cur_week_percent = datetime.date.isocalendar(datetime.date.today())[1] / 52
+    
+    #yearly totals
+    #TODO have not tested
+    c.execute("""
+              UPDATE resolutions
+              SET pace = ROUND((? * target)),
+              cur_percent = ROUND(current*100.0 / target, 2),
+              pace_percent = ROUND((? * 100.0), 2)
+              WHERE user_id = ?
+              AND type = "Yearly Total"
+              """, (cur_week_percent, cur_week_percent, user_id))
+    
+    conn.commit()
+    #TODO one-offs
+
 # # # ~ ~ ~ Other Functions ~ ~ ~ # # #
 def setup_db():
     """Check if db exists or create it if not"""
@@ -441,28 +532,7 @@ def setup_db():
         df.to_sql('resolutions', conn, index=False)
 
 
-def update_percents(user_id):
-    """update the percent and pace for a given user_id"""
-    #TODO update percents
-    conn = sqlite3.connect('data.db')
-    
-    c = conn.cursor()
-    
-    cur_week_percent = datetime.date.isocalendar(datetime.date.today())[1] / 52
-    
-    #yearly totals
-    #TODO have not tested
-    c.execute("""
-              UPDATE resolutions
-              SET pace = ROUND((? * target)),
-              cur_percent = ROUND((current / target * 100), 0),
-              pace_percent = ROUND((? * 100), 0)
-              WHERE user_id = ?
-              AND type = "Yearly Total"
-              """, (cur_week_percent, cur_week_percent, user_id))
-    
-    #TODO one-offs
-    
+
       
 # # # ~ ~ ~ Main ~ ~ ~ # # #
 def main():
