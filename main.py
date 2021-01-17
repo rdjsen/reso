@@ -97,41 +97,59 @@ def track(update, context):
     
     #db connection
     conn = sqlite3.connect('data.db')
-    c = conn.cursor()
     
     #get status
-    c.execute("""
-              SELECT status
-              FROM user_status
-              WHERE chat_id=?
-              """, (user_id,))
-    cur_status = c.fetchone()[0]
+    cur_status = get_status(user_id)
     
     #verify idling
-    
-    if cur_status == 'idle':
+    if cur_status[0] == 'idle':
         #give update
-        df = pd.read_sql("""
-                         SELECT *
-                         FROM resolutions
-                         WHERE user_id =?
-                         """, conn, params = (user_id,))
         
-        #loop to give the update on each one
+        num_resos = count_resos(user_id)
+        
+        if num_resos == 0:
+            #not tracking any
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                             text = "Looks like you haven't added any resolutions "
+                             "yet.  Use /add to add some!")
+        else:
+            #tracking resos.  Enter loop
+            df = pd.read_sql("""
+                             SELECT *
+                             FROM resolutions
+                             WHERE user_id =?
+                             """, conn, params = (user_id,))
+            for i in range(len(df)):
+                #loop over all resos
+                
+                reso = df.loc[i]
+                
+                if reso['type'] == 'Yearly Total':
+                    #yearly total message
+                    message = (f"Resolution {i+1} / {num_resos} :"
+                    f" {reso['resolution']}.  You have completed {reso['current']} "
+                    f"out of {reso['target']} good for {reso['cur_percent']}%.  "
+                    f"The pace for this point in the year is {int(float(reso['pace']))} which "
+                    f"is {reso['pace_percent']}%.")
+                    
+                elif int(reso['current']) == 1:
+                    #completed one off
+                    message = (f"Resolution {i+1} / {num_resos} :"
+                    f" {reso['resolution']}.  You have completed this resolution!")
+                else:
+                    #incomplete one-off
+                    message = (f"Resolution {i+1} / {num_resos} :"
+                    f" {reso['resolution']}.  You have not completed this resolution yet.")
+                    pass
+                
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text = message)   
+            
     else:
         #error message
-        pass
-    
-    #TODO verify that user isn't adding, deleting, or updating
-    
-    
-    #psuedocode
-    #check if file exists for username
-    #if not, create one
-    #display currently tracked resos
-    #prompt user to use /update, /
-    
-    pass
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                             text = "Looks like you are currently working on something else."
+                             "  Finish that first!")
 
 def add_reso(update, context):
     """add a new resolution"""
@@ -168,6 +186,73 @@ def add_reso(update, context):
                              text = "Ready to add a resolution to the tracker! "
                              "What type do you want to add?  A one-off resolution "
                              "or a yearly total?  Enter 1 for one-off, or 2 for yearly.")
+def start_updating(update, context):
+    """start the updating loop"""
+    
+     #get user_id
+    user_id = update.effective_chat.id
+    
+    #db connection
+    conn = sqlite3.connect('data.db')
+    c = conn.cursor()
+    
+    #get status
+    dbpull = get_status(user_id)
+    
+    cur_status = dbpull[0]
+    cur_num = dbpull[1]
+    
+    #verify idling
+    if cur_status == 'idle':
+        #give update
+        
+        num_resos = count_resos(user_id)
+        
+        if num_resos == 0:
+            #not tracking any
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                             text = "Looks like you haven't added any resolutions "
+                             "yet.  Use /add to add some!")
+        else:
+            #tracking resos.  Change status to updating and prompt first one
+            update_status(user_id, 'updating', 1)
+            
+            c.execute("""SELECT * FROM resolutions
+                      WHERE user_id = ? AND num = 1""", (user_id,))
+                      
+            reso = c.fetchone()
+            
+            description = reso[2]
+            cur_type = reso[3]
+            cur_progress = reso[5]
+            cur_target = reso[4]
+            
+            if cur_type == 'Yearly Total':
+                #yearly total
+                message = (f"Resolution 1 / {num_resos}: {description}.  You've completed"
+                           f" {cur_progress} out of {cur_target}.  How many have you"
+                           f" completed since the last update?")
+            
+                
+            else:
+                #TODO change to elif cur_progress == 1 and say its been complete, move on
+                #probably have to loop it
+                #one-off
+                message = (f"Resolution 1 / {num_resos}: {description}.  "
+                           f"Has this been completed?  Enter 1 for yes or 2 for no.")
+            
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text = message)
+            
+    else:
+        #not currently idling
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                             text = "Uh oh!  I can't update resolutions right"
+                             " now since you are working on something else.  Finish"
+                             " that first!")
+        
+                     
+
 
 # # # ~ ~ ~ Main Conversation Function ~ ~ ~ # # #
 def input_loop(update, context):
@@ -178,14 +263,8 @@ def input_loop(update, context):
     
     conn = sqlite3.connect('data.db')
     c = conn.cursor()
-    # c.execute("""
-    #           SELECT status, num
-    #           FROM user_status
-    #           WHERE chat_id=?
-    #           """, (user_id,))
-    
-    # dbpull = c.fetchone()
-    
+
+    #get user status    
     dbpull = get_status(user_id)
     
     cur_status = dbpull[0]
@@ -199,13 +278,6 @@ def input_loop(update, context):
                 type_list = {1:'One-Off', 2:'Yearly Total'}
                 cur_type = int(update.message.text)
                 
-                #calc newnum
-                # c.execute('''
-                #           SELECT COUNT(*) 
-                #           FROM resolutions 
-                #           WHERE user_id=?
-                #           ''', (user_id,))
-                
                 new_num = count_resos(user_id) + 1
                 
                 c.execute("""INSERT INTO resolutions
@@ -213,16 +285,8 @@ def input_loop(update, context):
                           """, (user_id, new_num, type_list[cur_type],))
                 
                 conn.commit()
-                
-                #update status
-                # c.execute("""
-                #           UPDATE user_status
-                #           SET num = 1
-                #           WHERE chat_id=?
-                #           """, (user_id,))
-                
-                # conn.commit()
-                
+
+                #update status                
                 update_status(user_id, 'adding', 1)
                 
                 #added, send response method
@@ -230,6 +294,7 @@ def input_loop(update, context):
                              text = "Great!  What is the resolution?")
                 
                 conn.close()
+                
             except (ValueError, IndexError, KeyError):
                 #illegal value entered
                 context.bot.send_message(chat_id=update.effective_chat.id,
@@ -242,14 +307,6 @@ def input_loop(update, context):
         #prompting description
             description = update.message.text
             
-            #calc new_num
-            # c.execute('''
-            #           SELECT COUNT(*) 
-            #           FROM resolutions 
-            #           WHERE user_id=?
-            #           ''', (user_id,))
-                
-            # new_num = c.fetchone()[0]
             new_num = count_resos(user_id)
             
             #add description to db
@@ -277,11 +334,6 @@ def input_loop(update, context):
             if cur_type == 'Yearly Total':
             
                 #if yearly total, move on to prompting for goal and current
-                # c.execute("""
-                #           UPDATE user_status
-                #           SET num = 2
-                #           WHERE chat_id=?
-                #           """, (user_id,))
                 
                 update_status(user_id, 'adding', 2)
                 
@@ -294,14 +346,6 @@ def input_loop(update, context):
                 
             else:
                 #type is one off - end adding
-                
-                #update status
-                # c.execute("""
-                #           UPDATE user_status
-                #           SET num = 0,
-                #           status = 'idle'
-                #           WHERE chat_id=?
-                #           """, (user_id,))
                 
                 update_status(user_id, 'idle', 0)
                 
@@ -323,15 +367,7 @@ def input_loop(update, context):
                     #illegal input, but doesn't raise error
                     raise ValueError
                     
-                #calc newnum
-                # c.execute('''
-                #           SELECT COUNT(*) 
-                #           FROM resolutions 
-                #           WHERE user_id=?
-                #           ''', (user_id,))
-                #
-                #new_num = c.fetchone()[0]
-                
+                #calc newnum                
                 new_num = count_resos(user_id)
                 
                 #update db
@@ -344,13 +380,7 @@ def input_loop(update, context):
                 
                 conn.commit()
                 
-                #update status
-                # c.execute("""
-                #           UPDATE user_status
-                #           SET num = 3
-                #           WHERE chat_id=?
-                #           """, (user_id,))
-                
+                #update status                
                 update_status(user_id, 'adding', 3)
                 
                 conn.commit()
@@ -359,14 +389,12 @@ def input_loop(update, context):
                 #send response
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text = "Fantastic!  How many have you completed?")
-                
-                
+                      
             except ValueError:
                 #illegal input
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text = "Whoops!  Illegal value entered.  Try Again!")
             
-    
         elif cur_num == 3:
             #prompting current value
             try:
@@ -376,15 +404,7 @@ def input_loop(update, context):
                     #illegal input, but doesn't raise error
                     raise ValueError
                     
-                #calc newnum
-                # c.execute('''
-                #           SELECT COUNT(*) 
-                #           FROM resolutions 
-                #           WHERE user_id=?
-                #           ''', (user_id,))
-                
-                # new_num = c.fetchone()[0]
-                
+                #calc newnum                
                 new_num = count_resos(user_id)
                 
                 #update db
@@ -397,14 +417,7 @@ def input_loop(update, context):
                 
                 conn.commit()
                 
-                #update status
-                # c.execute("""
-                #           UPDATE user_status
-                #           SET num = 0,
-                #           status = 'idle'
-                #           WHERE chat_id=?
-                #           """, (user_id,))
-                
+                #update status               
                 update_status(user_id, 'idle', 0)
                 
                 conn.commit()
@@ -424,8 +437,107 @@ def input_loop(update, context):
         
         pass
     elif cur_status == 'updating':
-        pass
+        #updating resos
+        
+        #give update
+        
+        num_resos = count_resos(user_id)
+        
+        dbpull = get_status(user_id)
+
+        cur_status = dbpull[0]
+        cur_num = dbpull[1]
+        
+        try:
+            update_value = int(update.message.text)
+            
+            #checking if the last update 
+            #getting old reso
+            c.execute("""SELECT * FROM resolutions
+                      WHERE user_id = ? AND num = ?""", (user_id, cur_num))
+                      
+            old_reso = c.fetchone()
+            
+            old_description = old_reso[2]
+            old_type = old_reso[3]
+            old_progress = old_reso[5]
+            old_target = old_reso[4]
+            
+            if old_type == 'One-Off' and update_value not in [1,2]:
+                #illegal value entered
+                raise ValueError
+                
+            elif old_type == 'One-Off' and update_value == 1:
+                #one off has been completed 
+                
+                c.execute("""UPDATE resolutions
+                          SET current = 1
+                          WHERE user_id = ? and num =?
+                          """, (user_id, cur_num))
+                
+                conn.commit()
+                
+            elif old_type == 'Yearly Total':
+                #yearly total reso
+                c.execute("""UPDATE resolutions
+                          SET current = current + ?
+                          WHERE user_id = ? and num =?
+                          """, (update_value, user_id, cur_num))
+                
+                conn.commit()
+                
+            
+            #checking if this was the last one
+            
+            if cur_num == num_resos:
+                #this was the last one
+                
+                #update status
+                update_status(user_id, 'idle', 1)
+                update_percents(user_id)
+                
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text = 'Update Complete!  Use /track to '
+                                         'see your updated progress!')
+            else:
+                #more resos to go, prompt the next one
+                #getting next reso
+                c.execute("""SELECT * FROM resolutions
+                          WHERE user_id = ? AND num = ?""", (user_id, cur_num+1))
+                      
+                reso = c.fetchone()
+            
+                cur_description = reso[2]
+                cur_type = reso[3]
+                cur_progress = reso[5]
+                cur_target = reso[4]
+                
+                if cur_type == 'Yearly Total':
+                    #yearly total
+                    message = (f"Resolution {cur_num+1} / {num_resos}: {cur_description}.  You've completed"
+                               f" {cur_progress} out of {cur_target}.  How many have you"
+                               f" completed since the last update?")
+            
+                
+                else:
+                    #one-off
+                    message = (f"Resolution {cur_num+1} / {num_resos}: {cur_description}.  "
+                               f"Has this been completed?  Enter 1 for yes or 2 for no.")
+                
+                update_status(user_id, 'updating', cur_num+1)
+                
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text = message)              
+                
+            
+            
+        except ValueError:
+            #illegal value entered        
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text = 'Uh-Oh!  Illegal value entered. Try Again!')
+        
     elif cur_status == 'deleting':
+        #TODO change this and add a deleting command with arguments
         pass
     else:
         pass
@@ -443,10 +555,6 @@ def get_status(user_id):
               FROM user_status
               WHERE chat_id=?
               """, (user_id,))
-    
-    #dbpull = c.fetchone()
-    #cur_status = dbpull[0]
-    #cur_num = dbpull[1]
     
     return c.fetchone()
 
@@ -483,7 +591,6 @@ def count_resos(user_id):
 
 def update_percents(user_id):
     """update the percent and pace for a given user_id"""
-    #TODO update percents
     conn = sqlite3.connect('data.db')
     
     c = conn.cursor()
@@ -491,7 +598,6 @@ def update_percents(user_id):
     cur_week_percent = datetime.date.isocalendar(datetime.date.today())[1] / 52
     
     #yearly totals
-    #TODO have not tested
     c.execute("""
               UPDATE resolutions
               SET pace = ROUND((? * target)),
@@ -540,7 +646,7 @@ def main():
     
     #setting up database
     setup_db()
-    conn.close()
+    #conn.close()
     
     bot_token = get_token()
     
@@ -560,6 +666,13 @@ def main():
     
     input_loop_handler = MessageHandler(Filters.text & (~Filters.command), input_loop)
     dispatcher.add_handler(input_loop_handler)
+    
+    track_handler = CommandHandler('track', track)
+    dispatcher.add_handler(track_handler)
+    
+    update_handler = CommandHandler('update', start_updating)
+    dispatcher.add_handler(update_handler)
+    
     
     #start polling
     updater.start_polling()
