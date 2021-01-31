@@ -50,7 +50,6 @@ def help_command(update, context):
 def start_tracking(update, context):
     """Generate a new tracking file"""
     
-    #TODO code to check if file exists and confirm overrite (probably with args)
     user_id = update.effective_chat.id
     
     #add to user_data db
@@ -85,7 +84,7 @@ def start_tracking(update, context):
     #message to let user know to add resos
     context.bot.send_message(chat_id=update.effective_chat.id,
                              text = "I am now ready to track you resolutions!"
-                             " use /add to add a new resolution, and /status to "
+                             " use /add to add a new resolution, and /track to "
                              "see current status of all resolutions.")
     
     
@@ -102,7 +101,13 @@ def track(update, context):
     cur_status = get_status(user_id)
     
     #verify idling
-    if cur_status[0] == 'idle':
+    if cur_status == None:
+        "user isn't currently tracking"
+        context.bot.send_message(chat_id=update.effective_chat.id,text = 
+                                 "Looks like you haven't started tracking yet. "
+                                 "Use /newtrack begin!")
+        
+    elif cur_status[0] == 'idle':
         #give update
         
         num_resos = count_resos(user_id)
@@ -165,7 +170,13 @@ def add_reso(update, context):
     cur_status = c.fetchone()[0]
     
     #check status, make sure not doing something else
-    if cur_status != 'idle':
+    if cur_status == None:
+        "user isn't currently tracking"
+        context.bot.send_message(chat_id=update.effective_chat.id,text = 
+                                 "Looks like you haven't started tracking yet. "
+                                 "Use /newtrack begin!")
+        
+    elif cur_status != 'idle':
         #not idling, send error message
         
         context.bot.send_message(chat_id=update.effective_chat.id,
@@ -203,7 +214,13 @@ def start_updating(update, context):
     cur_num = dbpull[1]
     
     #verify idling
-    if cur_status == 'idle':
+    if cur_status == None:
+        "user isn't currently tracking"
+        context.bot.send_message(chat_id=update.effective_chat.id,text = 
+                                 "Looks like you haven't started tracking yet. "
+                                 "Use /newtrack begin!")
+        
+    elif cur_status == 'idle':
         #give update
         
         num_resos = count_resos(user_id)
@@ -235,8 +252,6 @@ def start_updating(update, context):
             
                 
             else:
-                #TODO change to elif cur_progress == 1 and say its been complete, move on
-                #probably have to loop it
                 #one-off
                 message = (f"Resolution 1 / {num_resos}: {description}.  "
                            f"Has this been completed?  Enter 1 for yes or 2 for no.")
@@ -270,7 +285,13 @@ def input_loop(update, context):
     cur_status = dbpull[0]
     cur_num = dbpull[1]
     
-    if cur_status == 'adding':
+    if cur_status == None:
+        "user isn't currently tracking"
+        context.bot.send_message(chat_id=update.effective_chat.id,text = 
+                                 "Looks like you haven't started tracking yet. "
+                                 "Use /newtrack begin!")
+        
+    elif cur_status == 'adding':
         
         if cur_num == 0:
             #Prompting type
