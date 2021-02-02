@@ -45,11 +45,20 @@ def start(update, context):
 def help_command(update, context):
     """Display available commands"""
     
+    command_list = ("/start - Reset the bot.  This will DELETE any current resolutions.\n" +
+                    "/track - List all current resolutions and status.\n" +
+                    "/add - Add a new resolution to the list.\n" +
+                    "/update - Give an update for each Resolution. \n" +
+                    "/delete <num> - Delete resolution <num> from the list.")
+    
+    
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text = command_list)
     pass
 
 def start_tracking(update, context):
     """Generate a new tracking file"""
-    
+
     user_id = update.effective_chat.id
     
     #add to user_data db
@@ -267,7 +276,46 @@ def start_updating(update, context):
                              " that first!")
         
                      
+def delete_reso(update, context):
+    """Handles deleting a reso passed as args"""
 
+    user_id = update.effective_chat.id
+    
+    conn = sqlite3.connect('data.db')
+    c = conn.cursor()
+
+    #get user status    
+    dbpull = get_status(user_id)
+    
+    cur_status = dbpull[0]
+    
+    if cur_status == None:
+        "user isn't currently tracking"
+        context.bot.send_message(chat_id=update.effective_chat.id,text = 
+                                 "Looks like you haven't started tracking yet. "
+                                 "Use /start begin!")
+    elif cur_status == 'idle':
+        try:
+            cur_num = int(context.args[0])
+            
+            if not (cur_num > 0 and cur_num <= count_resos(user_id)):
+                #out of range error
+                raise ValueError
+            
+            delete_reso_db(user_id, cur_num)
+            
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text = "Resolution Deleted.  Use /track to"+
+                                     " see an updated list.")
+            
+        except (ValueError, NameError):
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text = "Illegal value enetered.  Usade: /delete <num>")
+    else:
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text = "Uh oh!  I can't delete resolutions right"
+                                 " now since you are working on something else.  Finish"
+                                 " that first!")
 
 # # # ~ ~ ~ Main Conversation Function ~ ~ ~ # # #
 def input_loop(update, context):
@@ -556,10 +604,6 @@ def input_loop(update, context):
             #illegal value entered        
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text = 'Uh-Oh!  Illegal value entered. Try Again!')
-        
-    elif cur_status == 'deleting':
-        #TODO change this and add a deleting command with arguments
-        pass
     else:
         pass
         #no command currently running
@@ -609,6 +653,26 @@ def count_resos(user_id):
                 
     return c.fetchone()[0]
 
+def delete_reso_db(user_id, num):
+    """Delete the current reso"""
+    
+    conn = sqlite3.connect('data.db')
+    c = conn.cursor()
+    
+    c.execute("""DELETE FROM resolutions
+              WHERE user_id = ?
+              AND num = ?
+              """, (user_id, num))
+    
+    conn.commit()
+    #recalculate nums
+    c.execute("""UPDATE resolutions
+              SET num = num - 1
+              WHERE user_id = ?
+              AND num > ?
+              """, (user_id,num))
+    
+    conn.commit()
 
 def update_percents(user_id):
     """update the percent and pace for a given user_id"""
@@ -629,7 +693,6 @@ def update_percents(user_id):
               """, (cur_week_percent, cur_week_percent, user_id))
     
     conn.commit()
-    #TODO one-offs
 
 # # # ~ ~ ~ Other Functions ~ ~ ~ # # #
 def setup_db():
@@ -657,9 +720,6 @@ def setup_db():
         #table doesn't exist
         df = pd.DataFrame(columns=FILE_TEMPLATE)
         df.to_sql('resolutions', conn, index=False)
-
-
-
       
 # # # ~ ~ ~ Main ~ ~ ~ # # #
 def main():
@@ -676,24 +736,17 @@ def main():
     dispatcher = updater.dispatcher
     
     # # # ~ ~ ~ Handlers ~ ~ ~ # # #
-    start_handler = CommandHandler('start', start)
-    dispatcher.add_handler(start_handler)
+    dispatcher.add_handler(CommandHandler('start', start_tracking))
     
-    start_tracking_handler = CommandHandler('newtrack', start_tracking)
-    dispatcher.add_handler(start_tracking_handler)
+    #start_tracking_handler = CommandHandler('newtrack', start_tracking)
+    #dispatcher.add_handler(start_tracking_handler)
     
-    adding_handler = CommandHandler('add', add_reso)
-    dispatcher.add_handler(adding_handler)
-    
-    input_loop_handler = MessageHandler(Filters.text & (~Filters.command), input_loop)
-    dispatcher.add_handler(input_loop_handler)
-    
-    track_handler = CommandHandler('track', track)
-    dispatcher.add_handler(track_handler)
-    
-    update_handler = CommandHandler('update', start_updating)
-    dispatcher.add_handler(update_handler)
-    
+    dispatcher.add_handler(CommandHandler('add', add_reso)) 
+    dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), input_loop))
+    dispatcher.add_handler(CommandHandler('track', track))
+    dispatcher.add_handler(CommandHandler('update', start_updating))
+    dispatcher.add_handler(CommandHandler('help', help_command))
+    dispatcher.add_handler(CommandHandler('delete', delete_reso))
     
     #start polling
     updater.start_polling()
