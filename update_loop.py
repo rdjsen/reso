@@ -250,6 +250,10 @@ def input_loop(update, context):
                 
                 conn.commit()
                 
+            #Not sure if this is neccessary, but putting in to fix a bug
+            #where when a oneoff is completed, fethone pulls none
+            else:
+                conn.commit()
             
             #checking if this was the last one
             
